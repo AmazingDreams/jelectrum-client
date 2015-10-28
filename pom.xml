@@ -6,4 +6,9 @@
 	<groupId>nl.amazingsystems</groupId>
 	<artifactId>jelectrum-client</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
+	<packaging>pom</packaging>
+	<modules>
+		<module>jelectrum-client-common</module>
+		<module>jelectrum-client-core</module>
+	</modules>
 </project>

@@ -1,6 +1,5 @@
 package nl.amazingsystems.electrum.clients;
 
-import java.nio.charset.Charset;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.Callable;
@@ -22,10 +21,11 @@ import io.netty.channel.ChannelOption;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioSocketChannel;
+import nl.amazingsystems.electrum.common.utils.ByteBufUtils;
 import nl.amazingsystems.electrum.requests.AbstractElectrumRequest;
 import nl.amazingsystems.electrum.responses.AbstractElectrumResponse;
 
-public class ElectrumTCPClient {
+public class ElectrumTCPClient implements ElectrumClient {
 
     private final Channel channel;
 
@@ -43,12 +43,7 @@ public class ElectrumTCPClient {
 	workerGroup = new NioEventLoopGroup();
 
 	Bootstrap bootstrap = new Bootstrap().group(workerGroup).channel(NioSocketChannel.class)
-		.option(ChannelOption.SO_KEEPALIVE, true).handler(new ChannelInitializer() {
-		    @Override
-		    protected void initChannel(Channel ch) throws Exception {
-			ch.pipeline().addLast(new ChannelHandlerAdapter());
-		    }
-		});
+		.option(ChannelOption.SO_KEEPALIVE, true).handler(new ElectrumChannelInitializer());
 
 	// Create connection and wait for it
 	channel = bootstrap.connect(host, port).sync().channel();
@@ -57,6 +52,7 @@ public class ElectrumTCPClient {
 	this.outGoingRequests = new HashMap<>();
 	this.incomingResponses = new HashMap<>();
 	this.executor = Executors.newFixedThreadPool(2);
+
     }
 
     public void close() throws InterruptedException {
@@ -89,31 +85,38 @@ public class ElectrumTCPClient {
 	return executor.submit(responseCallable);
     }
 
+    private class ElectrumChannelInitializer extends ChannelInitializer<Channel> {
+
+	@Override
+	protected void initChannel(Channel ch) throws Exception {
+	    ch.pipeline().addLast(new ChannelHandlerAdapter());
+	}
+
+    }
+
     private class ChannelHandlerAdapter extends ChannelInboundHandlerAdapter {
 
 	@Override
 	public void channelRead(ChannelHandlerContext ctx, Object message) {
 	    ByteBuf byteBuf = (ByteBuf) message;
-	    byte[] bytes;
-	    if (byteBuf.hasArray()) {
-		bytes = byteBuf.array();
-	    } else {
-		bytes = new byte[byteBuf.readableBytes()];
-		byteBuf.getBytes(0, bytes);
-	    }
 
-	    String msgStr = new String(bytes, Charset.forName("UTF-8"));
+	    String msgStr = ByteBufUtils.byteBufToString(byteBuf);
+	    Class<? extends AbstractElectrumResponse> responseClass = this.determineActualResponseClass(msgStr);
+
+	    Gson gson = new Gson();
+	    AbstractElectrumResponse actualResponse = gson.fromJson(msgStr, responseClass);
+
+	    incomingResponses.put(actualResponse.getId(), actualResponse);
+	}
+
+	private Class<? extends AbstractElectrumResponse> determineActualResponseClass(String message) {
 	    Gson gson = new Gson();
 
-	    BasicElectrumResponse baseResponse = gson.fromJson(msgStr, BasicElectrumResponse.class);
+	    BasicElectrumResponse baseResponse = gson.fromJson(message, BasicElectrumResponse.class);
 	    long requestId = baseResponse.getId();
 	    AbstractElectrumRequest originalRequest = outGoingRequests.get(requestId);
 
-	    Class<? extends AbstractElectrumResponse> responseClass = originalRequest.getResponseClass();
-
-	    AbstractElectrumResponse actualResponse = gson.fromJson(msgStr, responseClass);
-
-	    incomingResponses.put(requestId, actualResponse);
+	    return originalRequest.getResponseClass();
 	}
     }
 

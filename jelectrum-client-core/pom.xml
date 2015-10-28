@@ -21,5 +21,10 @@
 			<artifactId>netty-all</artifactId>
 			<version>4.0.32.Final</version>
 		</dependency>
+		<dependency>
+			<groupId>nl.amazingsystems</groupId>
+			<artifactId>jelectrum-client-common</artifactId>
+			<version>${project.parent.version}</version>
+		</dependency>
 	</dependencies>
 </project>

@@ -3,9 +3,9 @@ package nl.amazingsystems.electrum.requests;
 import nl.amazingsystems.electrum.responses.AbstractElectrumResponse;
 import nl.amazingsystems.electrum.responses.GetServerVersionResponse;
 
-public class GetServerVersionRequest extends AbstractElectrumRequest {
+public class ServerVersionRequest extends AbstractElectrumRequest {
 
-    public GetServerVersionRequest() {
+    public ServerVersionRequest() {
 	super("server.version");
     }
 

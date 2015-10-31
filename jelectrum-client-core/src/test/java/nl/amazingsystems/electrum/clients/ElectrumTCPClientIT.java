@@ -5,7 +5,7 @@ import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 
-import nl.amazingsystems.electrum.requests.GetServerVersionRequest;
+import nl.amazingsystems.electrum.requests.ServerVersionRequest;
 import nl.amazingsystems.electrum.responses.GetServerVersionResponse;
 
 public class ElectrumTCPClientIT {
@@ -19,7 +19,7 @@ public class ElectrumTCPClientIT {
 
     @Test
     public void testGetServerVersion() throws Exception {
-	GetServerVersionRequest request = new GetServerVersionRequest();
+	ServerVersionRequest request = new ServerVersionRequest();
 	GetServerVersionResponse response = (GetServerVersionResponse) this.client.sendRequest(request).get();
 
 	Assert.assertEquals("1.0", response.getResult());

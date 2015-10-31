@@ -7,6 +7,7 @@ import nl.amazingsystems.electrum.responses.AbstractElectrumResponse;
 
 public interface ElectrumClient {
 
-    public Future<? extends AbstractElectrumResponse> sendRequest(final AbstractElectrumRequest request);
+	public Future<? extends AbstractElectrumResponse> sendRequest(
+			final AbstractElectrumRequest request);
 
 }

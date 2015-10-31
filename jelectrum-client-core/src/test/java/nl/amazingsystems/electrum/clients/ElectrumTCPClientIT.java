@@ -1,32 +1,51 @@
 package nl.amazingsystems.electrum.clients;
 
+import java.util.concurrent.CountDownLatch;
+
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 
+import nl.amazingsystems.electrum.clients.tcp.ElectrumTCPClient;
+import nl.amazingsystems.electrum.listeners.ElectrumResponseListener;
 import nl.amazingsystems.electrum.requests.ServerVersionRequest;
-import nl.amazingsystems.electrum.responses.ServerVersionResponse;
+import nl.amazingsystems.electrum.responses.AbstractElectrumResponse;
 
 public class ElectrumTCPClientIT {
 
-    private ElectrumTCPClient client;
+	private ElectrumTCPClient client;
 
-    @Before
-    public void setUp() throws Exception {
-	this.client = new ElectrumTCPClient("electrum2.egulden.org", 5037);
-    }
+	@Before
+	public void setUp() throws Exception {
+		this.client = new ElectrumTCPClient("electrum2.egulden.org", 5037);
+	}
 
-    @Test
-    public void testGetServerVersion() throws Exception {
-	ServerVersionRequest request = new ServerVersionRequest();
-	ServerVersionResponse response = (ServerVersionResponse) this.client.sendRequest(request).get();
+	@Test
+	public void testGetServerVersion() throws Exception {
+		int repeat = 1;
 
-	Assert.assertEquals("1.0", response.getResult());
-    }
+		final CountDownLatch latch = new CountDownLatch(repeat);
 
-    @After
-    public void tearDown() throws Exception {
-	this.client.close();
-    }
+		for (int i = 0; i < repeat; i++) {
+			ServerVersionRequest request = new ServerVersionRequest();
+			this.client.sendRequest(request, new ElectrumResponseListener() {
+				@Override
+				public boolean onMessageReceived(
+						AbstractElectrumResponse message) {
+					Assert.assertEquals("1.0", message.getResult());
+					latch.countDown();
+
+					return true;
+				}
+			});
+		}
+
+		latch.await();
+	}
+
+	@After
+	public void tearDown() throws Exception {
+		this.client.close();
+	}
 }

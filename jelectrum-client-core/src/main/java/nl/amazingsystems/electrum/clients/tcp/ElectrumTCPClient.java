@@ -1,11 +1,10 @@
-package nl.amazingsystems.electrum.clients;
+package nl.amazingsystems.electrum.clients.tcp;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
-import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicLong;
 
 import com.google.gson.Gson;
@@ -21,8 +20,11 @@ import io.netty.channel.ChannelOption;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioSocketChannel;
+import nl.amazingsystems.electrum.clients.ElectrumClient;
 import nl.amazingsystems.electrum.common.utils.ByteBufUtils;
+import nl.amazingsystems.electrum.listeners.ElectrumResponseListener;
 import nl.amazingsystems.electrum.requests.AbstractElectrumRequest;
+import nl.amazingsystems.electrum.requests.SubscribeRequest;
 import nl.amazingsystems.electrum.responses.AbstractElectrumResponse;
 
 public class ElectrumTCPClient implements ElectrumClient {
@@ -31,13 +33,11 @@ public class ElectrumTCPClient implements ElectrumClient {
 
 	private final EventLoopGroup workerGroup;
 
-	private final ExecutorService executor;
-
 	private final AtomicLong idCounter;
 
-	private final Map<Long, AbstractElectrumRequest> outGoingRequests;
+	private final List<ElectrumResponseListener> responseListeners;
 
-	private final Map<Long, AbstractElectrumResponse> incomingResponses;
+	private final Map<Long, AbstractElectrumRequest> originalRequests;
 
 	public ElectrumTCPClient(String host, int port)
 			throws InterruptedException {
@@ -52,10 +52,15 @@ public class ElectrumTCPClient implements ElectrumClient {
 		channel = bootstrap.connect(host, port).sync().channel();
 
 		this.idCounter = new AtomicLong();
-		this.outGoingRequests = new HashMap<>();
-		this.incomingResponses = new HashMap<>();
-		this.executor = Executors.newFixedThreadPool(2);
+		this.responseListeners = new ArrayList<ElectrumResponseListener>();
+		this.originalRequests = new HashMap<Long, AbstractElectrumRequest>();
+	}
 
+	@Override
+	public void addResponseListener(ElectrumResponseListener listener) {
+		synchronized (this.responseListeners) {
+			this.responseListeners.add(listener);
+		}
 	}
 
 	public void close() throws InterruptedException {
@@ -63,30 +68,31 @@ public class ElectrumTCPClient implements ElectrumClient {
 		this.workerGroup.shutdownGracefully().sync();
 	}
 
-	public Future<? extends AbstractElectrumResponse> sendRequest(
-			final AbstractElectrumRequest request) {
+	private void handleMessageReceived(AbstractElectrumResponse message) {
+		synchronized (responseListeners) {
+			Iterator<ElectrumResponseListener> iterator = this.responseListeners
+					.iterator();
+
+			while (iterator.hasNext()) {
+				boolean remove = iterator.next().onMessageReceived(message);
+
+				if (remove) {
+					iterator.remove();
+				}
+			}
+		}
+	}
+
+	public void sendRequest(final AbstractElectrumRequest request,
+			final ElectrumResponseListener listener) {
 		request.setId(this.idCounter.incrementAndGet());
-		this.outGoingRequests.put(request.getId(), request);
 
 		String messageStr = request.toString() + "\n";
 		ByteBuf message = Unpooled.copiedBuffer(messageStr.getBytes());
 
+		this.responseListeners.add(listener);
+		this.originalRequests.put(request.getId(), request);
 		this.channel.writeAndFlush(message);
-
-		Callable<AbstractElectrumResponse> responseCallable = new Callable<AbstractElectrumResponse>() {
-
-			@Override
-			public AbstractElectrumResponse call() throws Exception {
-				Long requestId = new Long(request.getId());
-				while (!incomingResponses.containsKey(requestId)) {
-					Thread.sleep(1);
-				}
-
-				return incomingResponses.get(request.getId());
-			}
-		};
-
-		return executor.submit(responseCallable);
 	}
 
 	private class ElectrumChannelInitializer
@@ -97,40 +103,45 @@ public class ElectrumTCPClient implements ElectrumClient {
 		protected void initChannel(Channel ch) throws Exception {
 			ch.pipeline().addLast(new ChannelHandlerAdapter());
 		}
-
 	}
 
 	private class ChannelHandlerAdapter extends ChannelInboundHandlerAdapter {
 
+		private Gson gson = new Gson();
+
 		@Override
 		public void channelRead(ChannelHandlerContext ctx, Object message) {
+			// Convert the raw message to a string
 			ByteBuf byteBuf = (ByteBuf) message;
-
 			String msgStr = ByteBufUtils.byteBufToString(byteBuf);
-			Class<? extends AbstractElectrumResponse> responseClass = this
-					.determineActualResponseClass(msgStr);
 
-			Gson gson = new Gson();
-			AbstractElectrumResponse actualResponse = gson.fromJson(msgStr,
+			// Get the original request
+			BasicElectrumResponse baseResponse = this.gson.fromJson(msgStr,
+					BasicElectrumResponse.class);
+			AbstractElectrumRequest originalRequest = originalRequests
+					.get(baseResponse.getId());
+
+			// Clean up the map if we don't need the original request anymore
+			if (!(originalRequest instanceof SubscribeRequest)) {
+				originalRequests.remove(baseResponse.getId());
+			}
+
+			// Determine the actual response class
+			Class<? extends AbstractElectrumResponse> responseClass = originalRequest
+					.getResponseClass();
+
+			// Let Gson convert the message to the actual response class
+			AbstractElectrumResponse actualResponse = this.gson.fromJson(msgStr,
 					responseClass);
 
-			incomingResponses.put(actualResponse.getId(), actualResponse);
-		}
-
-		private Class<? extends AbstractElectrumResponse> determineActualResponseClass(
-				String message) {
-			Gson gson = new Gson();
-
-			BasicElectrumResponse baseResponse = gson.fromJson(message,
-					BasicElectrumResponse.class);
-			long requestId = baseResponse.getId();
-			AbstractElectrumRequest originalRequest = outGoingRequests
-					.get(requestId);
-
-			return originalRequest.getResponseClass();
+			handleMessageReceived(actualResponse);
 		}
 	}
 
 	private class BasicElectrumResponse extends AbstractElectrumResponse {
+		@Override
+		public Object getResult() {
+			return null;
+		}
 	}
 }

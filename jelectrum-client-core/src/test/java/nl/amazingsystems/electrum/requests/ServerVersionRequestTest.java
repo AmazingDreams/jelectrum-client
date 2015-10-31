@@ -6,7 +6,7 @@ import org.junit.Test;
 public class ServerVersionRequestTest {
 
 	@Test
-	public void testGetServerVersionRequest() {
+	public void testServerVersionRequest() {
 		ServerVersionRequest request = new ServerVersionRequest();
 
 		Assert.assertEquals("server.version", request.getMethod());

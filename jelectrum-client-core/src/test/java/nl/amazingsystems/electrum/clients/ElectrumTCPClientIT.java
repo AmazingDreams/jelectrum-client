@@ -10,7 +10,8 @@ import org.junit.Test;
 import nl.amazingsystems.electrum.clients.tcp.ElectrumTCPClient;
 import nl.amazingsystems.electrum.listeners.ElectrumResponseListener;
 import nl.amazingsystems.electrum.requests.ServerVersionRequest;
-import nl.amazingsystems.electrum.responses.AbstractElectrumResponse;
+import nl.amazingsystems.electrum.responses.ElectrumResponse;
+import nl.amazingsystems.electrum.responses.ServerVersionResponse;
 
 public class ElectrumTCPClientIT {
 
@@ -31,8 +32,11 @@ public class ElectrumTCPClientIT {
 			ServerVersionRequest request = new ServerVersionRequest();
 			this.client.sendRequest(request, new ElectrumResponseListener() {
 				@Override
-				public boolean onMessageReceived(
-						AbstractElectrumResponse message) {
+				public boolean onMessageReceived(ElectrumResponse message) {
+					if (!(message instanceof ServerVersionResponse)) {
+						Assert.fail("Somehow received another message");
+					}
+
 					Assert.assertEquals("1.0", message.getResult());
 					latch.countDown();
 

@@ -7,5 +7,5 @@ package nl.amazingsystems.electrum.requests;
  * 
  * @author dennis
  */
-public interface SubscribeRequest {
+public interface SubscribeRequest extends ElectrumRequest {
 }

@@ -1,9 +1,9 @@
 package nl.amazingsystems.electrum.listeners;
 
-import nl.amazingsystems.electrum.responses.AbstractElectrumResponse;
+import nl.amazingsystems.electrum.responses.ElectrumResponse;
 
 public interface ElectrumResponseListener {
 
-	public boolean onMessageReceived(AbstractElectrumResponse message);
+	public boolean onMessageReceived(ElectrumResponse message);
 
 }
